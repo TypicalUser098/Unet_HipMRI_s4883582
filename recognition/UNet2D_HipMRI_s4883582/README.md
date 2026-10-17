@@ -18,7 +18,13 @@ COMP3710 Demo 2 U-Net.
 | `predict.py` | Test evaluation, resource profiling and failure case figures                        |
 
 ## Usage
-1. Set the data paths at the top of `dataset.py` (`TRAIN_IMG_PATH`, `TRAIN_SEG_PATH`, etc.).
+1. Install `python-dotenv` (`pip install python-dotenv`) and create a `.env` file in this folder
+   pointing at the HipMRI dataset (it is git-ignored, so each machine keeps its own):
+   ```
+   HIPMRI_ROOT=/home/groups/comp3710/HipMRI_Study_open
+   ```
+   A local copy must keep the same `keras_slices_data/keras_slices_*` folder structure.
+   Setting `HIPMRI_ROOT` as a normal environment variable also works.
 2. Train:
    ```bash
    python train.py

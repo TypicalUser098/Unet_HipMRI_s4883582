@@ -11,18 +11,25 @@ import numpy as np
 import nibabel as nib
 import torch
 import torch.nn.functional as F
+from dotenv import load_dotenv
 from torch.utils.data import Dataset
 
 
 # ==========================================
-# Data Paths (set for local machine or Rangpur)
+# Data Paths
 # ==========================================
-TRAIN_IMG_PATH = ""
-TRAIN_SEG_PATH = ""
-VALIDATE_IMG_PATH = ""
-VALIDATE_SEG_PATH = ""
-TEST_IMG_PATH = ""
-TEST_SEG_PATH = ""
+# Root of the HipMRI dataset, set via HIPMRI_ROOT in a .env file next to this script (not committed)
+# or as an environment variable (e.g. /home/groups/comp3710/HipMRI_Study_open on Rangpur).
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+HIPMRI_ROOT = os.environ["HIPMRI_ROOT"]
+SLICES_PATH = os.path.join(HIPMRI_ROOT, "keras_slices_data")
+
+TRAIN_IMG_PATH = os.path.join(SLICES_PATH, "keras_slices_train")
+TRAIN_SEG_PATH = os.path.join(SLICES_PATH, "keras_slices_seg_train")
+VALIDATE_IMG_PATH = os.path.join(SLICES_PATH, "keras_slices_validate")
+VALIDATE_SEG_PATH = os.path.join(SLICES_PATH, "keras_slices_seg_validate")
+TEST_IMG_PATH = os.path.join(SLICES_PATH, "keras_slices_test")
+TEST_SEG_PATH = os.path.join(SLICES_PATH, "keras_slices_seg_test")
 
 # 0 = Background, 1 = Body, 2 = Bone, 3 = Bladder, 4 = Rectum, 5 = Prostate
 CLASS_NAMES = ["Background", "Body", "Bone", "Bladder", "Rectum", "Prostate"]
