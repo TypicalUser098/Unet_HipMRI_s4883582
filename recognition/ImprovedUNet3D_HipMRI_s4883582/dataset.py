@@ -106,12 +106,18 @@ def split_volumes(mr_dir=MR_PATH):
 # ==========================================
 # 3D Augmentation
 # ==========================================
+# Only mirror left-right: the pelvis is roughly symmetric that way, whereas flipping the other axes
+# would put the bladder below the prostate or the rectum in front of it, which never occurs in real scans.
+# Axis 0 is left-right for RAS/LAS-oriented volumes (check with nib.aff2axcodes(nib.load(path).affine)).
+FLIP_AXES = (0,)
+
+
 def random_flip(image, mask):
-    """Mirror along each spatial axis with probability 0.5 (as in Isensee et al.)."""
-    for axis in (1, 2, 3):
+    """Mirror along each axis in FLIP_AXES with probability 0.5."""
+    for axis in FLIP_AXES:
         if torch.rand(1).item() < 0.5:
-            image = image.flip(axis)
-            mask = mask.flip(axis - 1)
+            image = image.flip(axis + 1)  # image has a leading channel dimension
+            mask = mask.flip(axis)
     return image, mask
 
 
@@ -141,7 +147,7 @@ def random_intensity(image, scale=0.1, shift=0.1, noise=0.05):
     return image + torch.randn_like(image) * noise
 
 
-def augment(image, mask):
+def augment_volume(image, mask):
     image, mask = random_flip(image, mask)
     image, mask = random_rotate_scale(image, mask)
     image = random_intensity(image)
@@ -194,7 +200,7 @@ class HipMRIVolumeDataset(Dataset):
     def __getitem__(self, idx):
         image, mask = self.images[idx], self.masks[idx].long()
         if self.augment:
-            image, mask = augment(image, mask)
+            image, mask = augment_volume(image, mask)
         return image, mask
 
     def name(self, idx):
