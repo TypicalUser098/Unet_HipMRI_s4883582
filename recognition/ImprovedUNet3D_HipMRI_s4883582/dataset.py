@@ -5,9 +5,8 @@ Each volume is a 3D Nifti file (semantic_MRs) with a matching label volume (sema
 Images are z-score normalised per volume and both are downsampled to a fixed size. Masks are kept as
 integer class labels (CrossEntropyLoss takes class indices directly).
 
-There is no predefined 3D split, so patients are split here. The validation and test patients are
-taken from the 2D keras_slices_data split, so the 3D model is evaluated on exactly the same patients
-as the 2D baseline.
+There is no predefined 3D split, so patients are split here with a fixed seed, keeping every weekly
+scan of a patient in the same split.
 """
 import math
 import os
@@ -30,11 +29,6 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 HIPMRI_ROOT = os.environ["HIPMRI_ROOT"]
 MR_PATH = os.path.join(HIPMRI_ROOT, "semantic_MRs")
 SEG_PATH = os.path.join(HIPMRI_ROOT, "semantic_labels_only")
-
-# The 2D split, used only to read which patients are in validation and test
-SLICES_PATH = os.path.join(HIPMRI_ROOT, "keras_slices_data")
-SLICES_VALIDATE_PATH = os.path.join(SLICES_PATH, "keras_slices_validate")
-SLICES_TEST_PATH = os.path.join(SLICES_PATH, "keras_slices_test")
 
 # 0 = Background, 1 = Body, 2 = Bone, 3 = Bladder, 4 = Rectum, 5 = Prostate
 CLASS_NAMES = ["Background", "Body", "Bone", "Bladder", "Rectum", "Prostate"]
@@ -75,24 +69,23 @@ def is_nifti(file_name):
 # ==========================================
 # Patient-level Split
 # ==========================================
-def slice_folder_patients(slice_dir):
-    """Patient IDs present in one of the 2D keras_slices folders."""
-    return {patient_id(f) for f in os.listdir(slice_dir) if is_nifti(f)}
+def split_volumes(mr_dir=MR_PATH, val_fraction=0.1, test_fraction=0.1, seed=42):
+    """Split volume file names into train/validate/test by patient.
 
-
-def split_volumes(mr_dir=MR_PATH):
-    """Split volume file names into train/validate/test by patient, mirroring the 2D split.
-
-    Every weekly scan of a patient goes to the same split. Patients in the 2D validation or test
-    folders go to the same 3D split; all other patients are used for training.
+    Patients (not volumes) are shuffled with a fixed seed, so every weekly scan of a patient goes to
+    the same split and train.py / predict.py always reproduce the same split.
     """
-    val_patients = slice_folder_patients(SLICES_VALIDATE_PATH)
-    test_patients = slice_folder_patients(SLICES_TEST_PATH)
+    files = sorted(f for f in os.listdir(mr_dir) if is_nifti(f))
+    patients = sorted({patient_id(f) for f in files})
+
+    order = torch.randperm(len(patients), generator=torch.Generator().manual_seed(seed)).tolist()
+    n_test = round(test_fraction * len(patients))
+    n_val = round(val_fraction * len(patients))
+    test_patients = {patients[i] for i in order[:n_test]}
+    val_patients = {patients[i] for i in order[n_test:n_test + n_val]}
 
     splits = {"train": [], "validate": [], "test": []}
-    for f in sorted(os.listdir(mr_dir)):
-        if not is_nifti(f):
-            continue
+    for f in files:
         pid = patient_id(f)
         if pid in test_patients:
             splits["test"].append(f)
