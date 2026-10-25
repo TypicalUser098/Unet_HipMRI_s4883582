@@ -28,7 +28,8 @@ OUTPUT_PATH = "outputs"
 
 NUM_FAILURES = 5  # number of worst prostate slices to visualise
 SLICE_AXIS = 2    # volume axis to slice along for the per-slice analysis (axis 2 = the 128-slice scan axis)
-END_SLICES = 2    # slices at each end of the ground-truth prostate counted as end (base/apex) slices
+END_SLICES = 4    # slices at each end of the ground-truth prostate counted as end (base/apex) slices
+                  # (~6 mm at full resolution, the same thickness as 2 slices in the half-resolution run)
 
 
 def profile(model, loader, device):

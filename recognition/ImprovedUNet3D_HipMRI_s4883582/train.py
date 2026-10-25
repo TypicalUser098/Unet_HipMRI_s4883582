@@ -29,11 +29,11 @@ MODEL_PATH = os.path.join(OUTPUT_PATH, "unet3d_best.pt")
 
 EPOCHS = 200
 PATIENCE = 40           # early stopping: epochs without a validation prostate Dice improvement
-BATCH_SIZE = 2
+BATCH_SIZE = 1          # full-resolution volumes; 2 fit at half resolution
 LEARNING_RATE = 5e-4    # Isensee et al.
 LR_DECAY = 0.985        # per-epoch exponential decay, Isensee et al.
 WEIGHT_DECAY = 1e-5
-NUM_WORKERS = 4
+NUM_WORKERS = 8         # CPU-side 3D augmentation is 8x heavier at full resolution
 SEED = 42
 
 

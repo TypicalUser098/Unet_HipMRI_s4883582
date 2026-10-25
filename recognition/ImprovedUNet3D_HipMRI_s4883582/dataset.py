@@ -35,10 +35,11 @@ CLASS_NAMES = ["Background", "Body", "Bone", "Bladder", "Rectum", "Prostate"]
 NUM_CLASSES = len(CLASS_NAMES)
 PROSTATE_CLASS = 5
 
-# Volumes are 256x256x128 (one is 256x256x144) with ~1.6 mm near-isotropic voxels. Half resolution
-# keeps the prostate (0.1-0.3% of voxels) at ~1-2.5k voxels and every axis divisible by 16.
+# Volumes are 256x256x128 (one is 256x256x144) with ~1.6 mm near-isotropic voxels. Full resolution keeps
+# the prostate (0.1-0.3% of voxels) boundary as sharp as possible; half resolution (128, 128, 64) was the
+# first experiment. Every axis must stay divisible by 16 for the 4 downsampling steps.
 VOLUME_DEPTH = 128
-VOLUME_SIZE = (128, 128, 64)
+VOLUME_SIZE = (256, 256, 128)
 
 
 def load_nifti_volume(path):
@@ -154,7 +155,7 @@ class HipMRIVolumeDataset(Dataset):
     """Returns (image, mask) pairs of 3D HipMRI volumes: image (1, D, H, W) float, mask (D, H, W) long.
 
     Volumes are preloaded and downsampled once in __init__, since decompressing the full-size .nii.gz
-    files every epoch would dominate training time (~4 MB per downsampled volume).
+    files every epoch would dominate training time (~32 MB per volume at full resolution).
     """
 
     def __init__(self, file_names, mr_dir=MR_PATH, seg_dir=SEG_PATH, volume_size=VOLUME_SIZE,
