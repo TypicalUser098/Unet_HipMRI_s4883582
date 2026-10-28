@@ -296,8 +296,24 @@ anatomy decides which failures are visible.
 few slices of the predicted extent (where over-extension occurs). The central gland is reliable
 (Dice 0.885 on central slices).
 ## 9. Recommendation
+It is recommended to use the 3D Improved U-Net as a ***drafting tool*** for the body of the body of 
+the prostate, but never as the final contour at the base or apex.
+
+3D Improved U-Net provides comparable accuracy compared to the 2D baseline (0.856 vs. 0.882) smooth
+contours along scan axis, and whole-volume inference in 79ms with a model a third of the size of the
+2D baseline. Unfortunately, base and apex Dice were approximately 0.70 for both resolutions, so 3D
+context does not remove clinically dangerous errors. Over-extension and under-segmentation will lead
+to separate risks that can be avoided by manual inspection.
+
+Half resolution is the cheapest option tested (0.47 GB, 11ms/volume, 13 mins training). Full
+resolution costs about 7x more memory and time for +0.02 Dice, improving in slices that were already
+performant. Both fit within the 16 GB budget so it's affordable, but not justified.
+
+A clinician must review and edit each end (approximately 6mm) of the prostate prediction, with particular
+care ate the bladder neck, checking 1-3 slices beyond the predicted extent for spurious prostate.
 
 ## 10. Limitations and Next Steps
+
 
 ## 11. Artificial Intelligence Usage Disclosure
 - **Tool used:** Claude (Anthropic), through Claude Code.
