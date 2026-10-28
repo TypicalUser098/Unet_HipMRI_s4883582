@@ -133,6 +133,28 @@ future results.`check_patient_leakage` confirms that the splits are disjoint.
 The best checkpoint is chosen on validation prostate Dice, and the test split is used only once, 
 at the end.
 
+## 5. Usage
+1. Install the dependencies (section 6) and create a `.env` file in this folder pointing at the dataset
+   (it is git-ignored, so each machine keeps its own):
+   ```
+   HIPMRI_ROOT=/home/groups/comp3710/HipMRI_Study_open
+   ```
+2. Train, then evaluate. As a Rangpur batch job:
+   ```bash
+   #!/bin/bash
+   #SBATCH --job-name=unet3d
+   #SBATCH --partition=a100
+   #SBATCH --gres=gpu:1
+   #SBATCH --cpus-per-task=4
+   #SBATCH --mem=48G
+   #SBATCH --time=08:00:00
+   #SBATCH --output=unet3d_%j.out
+   #SBATCH --error=unet3d_%j.err
+
+   conda activate torch
+   cd ~/Unet_HipMRI_s4883582/recognition/ImprovedUNet3D_HipMRI_s4883582
+   python -u train.py && python -u predict.py
+
    
 ## 6. Dependencies and Reproducibility
 
