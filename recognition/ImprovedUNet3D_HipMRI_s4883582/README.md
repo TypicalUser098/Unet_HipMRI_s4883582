@@ -6,6 +6,29 @@
 ## Contents
 1. [Problem](#1-problem)
 
+2. [Algorithm](#2-algorithm)
+
+3. [Feasibility Review](#3-feasibility-review)
+
+4. [Data, Pre-processing and Splits](#4-data-pre-processing-and-splits)
+
+5. [Usage](#5-usage)
+6. [Dependencies and Reproducibility](#6-dependencies-and-reproducibility)
+
+7. [Results](#7-results)
+
+8. [Open Research Dilemma: 2D vs 3D Context](#8-open-research-dilemma-2d-vs-3d-context)
+
+9. [Recommendation](#9-recommendation)
+
+10. [Limitations and Next Steps](#10-limitations-and-next-steps)
+
+11. [Artificial Intelligence Usage Disclosure](#11-artificial-intelligence-usage-disclosure)
+
+12. [References](#12-references)
+
+## 1. Problem
+
 External-beam radiotherapy for different cancers is a millimetre precise therapy. For prostate cancer,
 it needs the prostate contoured on MRI whilst avoiding other vital areas like the bladder and rectum.
 Over-contouring will irradiate healthy organs and tissue potentially causing cystitis or proctitis.
@@ -22,19 +45,26 @@ this, the following can be answered:
 slice-by-slice model makes, or does it only improve the easy central slices while costing more GPU 
 memory and time?**
 
-2. [Algorithm](#2-algorithm)
-3. [Feasibility Review](#3-feasibility-review)
-4. [Data, Pre-processing and Splits](#4-data-pre-processing-and-splits)
-5. [Usage](#5-usage)
-6. [Dependencies and Reproducibility](#6-dependencies-and-reproducibility)
-7. [Results](#7-results)
-8. [Open Research Dilemma: 2D vs 3D Context](#8-open-research-dilemma-2d-vs-3d-context)
-9. [Recommendation](#9-recommendation)
-10. [Limitations and Next Steps](#10-limitations-and-next-steps)
-11. [Artificial Intelligence Usage Disclosure](#11-artificial-intelligence-usage-disclosure)
-12. [References](#12-references)
+## 2. Algorithm
 
-## 1. Problem
+The model utilised is the 3D Improved U-Net of Isensee et al. [2], implemented from the paper in
+PyTorch ([`modules.py`](modules.py)). Like a regular 2D U-Net [1, 3], an encoder repeatedly halves the
+input resolution to build up context and a decoder upsamples the resultant image back into full
+resolution, with skip connections carrying fine details across. Insensee's changes to the original
+model makes it better in theory for small, imbalanced medical datasets.
+
+Firstly, Residual context modules are used to downsample with a stride-2 3x3x3 convolution. Then it
+applies a pre-activation residual block (being norm → LeakyReLU → conv → dropout 0.3 → norm → LeakyReLU →
+  conv, added to its input). Instance normalisation and LeakyReLU (0.01) with batches of 1-2 volumes
+were also used. The decoder upsamples by repeating voxels (avoiding checkerboard artefacts), concatenates
+the skip connection, then recombines features with a 3x3x3 and 1x1x1 convolution. Segmentation layers
+at 1/4, 1/2, and full resolution are upscaled and summed into the output so gradients reach lower decoder
+layers directly.
+
+The loss is cross-entropy plus soft multi-class Dice (the same as the 2D baseline). Dice weighs every class
+equally regardless of size, so the tiny prostate is not drowned out by background; cross-entropy keeps
+voxel-wise gradients stable early in training. The model has **9.46M parameters**, a third of the 2D
+U-Net's 31.0M.
 
 ## 3. Feasibility Review
 
