@@ -48,15 +48,15 @@ memory and time?**
 ## 2. Algorithm
 
 The model utilised is the 3D Improved U-Net of Isensee et al. [2], implemented from the paper in
-PyTorch [13] ([`modules.py`](modules.py)). Like a regular 2D U-Net [1, 3], an encoder repeatedly halves the
+PyTorch [13] ([`modules.py`](modules.py)). Like U-Net [1] and 3D U-Net [3], an encoder repeatedly halves the
 input resolution to build up context and a decoder upsamples the resultant image back into full
 resolution, with skip connections carrying fine details across. Isensee's changes to the original
-model makes it better in theory for small, imbalanced medical datasets.
+model make it better in theory for small, imbalanced medical datasets.
 
-Firstly, Residual context modules are used to downsample with a stride-2 3x3x3 convolution. Then it
-applies a pre-activation residual block [5] (being norm → LeakyReLU → conv → dropout 0.3 [6] → norm → LeakyReLU →
-  conv, added to its input). Instance normalisation [7] and LeakyReLU (0.01) with batches of 1-2 volumes
-were also used. The decoder upsamples by repeating voxels (avoiding checkerboard artefacts [8]), concatenates
+Firstly, each encoder level below full resolution downsamples with a stride-2 3x3x3 convolution, then
+applies a residual context module: a pre-activation residual block [5] (norm → LeakyReLU → conv →
+dropout 0.3 [6] → norm → LeakyReLU → conv, added to its input). Instance normalisation [7] and
+LeakyReLU (0.01) are used throughout, because batch statistics are unreliable with batches of 1-2 volumes. The decoder upsamples by repeating voxels (avoiding checkerboard artefacts [8]), concatenates
 the skip connection, then recombines features with a 3x3x3 and 1x1x1 convolution. Segmentation layers
 at 1/4, 1/2, and full resolution are upscaled and summed into the output (deep supervision [9]) so gradients reach lower decoder
 layers directly.
@@ -68,18 +68,57 @@ U-Net's 31.0M.
 
 ## 3. Feasibility Review
 
-The feasibility review set out the users (imaging specialists planning external-beam radiotherapy), the
-dilemma (spatial context vs. clinical boundary utility) and four acceptance criteria. Each criterion is
-checked below against the final full-resolution 3D run, with a link to where the evidence is in this README.
+The one-page review presented at the midpoint check-off is reproduced below, with typos fixed. It is
+followed by a check of each acceptance criterion against the final results and the changes made since.
+
+**Anatomical Contouring: 2D vs 3D Context in Prostate MRI**
+
+**User needs, scope and acceptance criteria.** The intended users of this model are imaging specialists
+planning and performing external-beam radiotherapy. The core domain dilemma is spatial context vs.
+clinical boundary utility: over-contouring causes proctitis/cystitis, while under-contouring risks lethal
+recurrence. The prototype will present automated anatomical contours for imaging review, while
+investigating whether 3D context minimises boundary errors compared to restricted 2D context. This will be
+done by training a 2D and a 3D U-Net.
+
+| ID | Dimension | Target metric | Constraints | Verification |
+|----|-----------|---------------|-------------|--------------|
+| AC1 | Task performance | Dice coefficient > 0.7 | HipMRI downsampled test set | Global Sørensen-Dice script |
+| AC2 | Clinical boundary utility | Base/apex slice IoU tracking | Avoid leakage into critical OARs | Visual multi-panel autopsy |
+| AC3 | Resource footprint (VRAM) | Peak GPU memory <= 16 GB | Single Colab T4/L4 | PyTorch VRAM profiling |
+| AC4 | Runtime / throughput | Inference fast enough for drafting | Acceptable per-case wait time | Inference time profiling |
+
+**Model choice and course concepts.** Data will be sourced from the HipMRI dataset. Strict patient-level
+splitting will be implemented to prevent data leakage. The 2D and 3D U-Net will be evaluated on the same
+test data to determine whether the increased memory cost of the 3D U-Net is justified. As the prostate is
+< 2% of the pelvic scan volume, Dice/Focal loss is needed, and the comparison checks whether the 3D network
+reduces the loss enough to justify the extra memory.
+
+**Preliminary feasibility evidence.** An initial data audit of the HipMRI dataset confirms the dataset is
+structurally sound. With data integrity verified, operational feasibility depends on the GPU
+constraints. The 2D U-Net is highly memory-efficient compared to the 3D, consuming approximately 2-4 GB of
+VRAM and completing 100 epochs in about 2-3 hours at 1-2 minutes per epoch. In contrast, the 3D U-Net is
+estimated to consume approximately 16 GB of VRAM and take roughly 16-25 hours for 100 epochs.
+
+**Risks, budget and fallback.**
+
+| Risk | Description | Warning sign | Mitigation |
+|------|-------------|--------------|------------|
+| Shared server limitations | The shared server may be in use, delaying testing and runs | `squeue` shows the job held for GPU resources | Run models at times of low activity and allow for delays |
+| Missing/corrupted images | Images that do not fit the expected format may crash the model at runtime | Sudden, unexpected stop during training | Scan incoming images and reject those that do not fit the expected standard |
+| Extreme class imbalance | The prostate is less than 2% of the volume | The model predicts only background and prostate Dice drops to zero | Use Dice/Focal loss to force foreground learning |
+
+### Acceptance criteria against the final results
+
+Each criterion is checked against the final full-resolution 3D run, with a link to the evidence.
 
 | ID | Dimension | Target (from review) | Result | Status | Evidence |
 |----|-----------|----------------------|--------|--------|----------|
 | AC1 | Task performance | Prostate Dice > 0.7 on the HipMRI test set | Test prostate Dice **0.8556** (IoU 0.7476) | Met | [Results](#7-results) |
-| AC2 | Clinical boundary utility | Track base/apex slice accuracy; avoid leakage into critical OARs | End-slice Dice **0.70** vs central **0.885**; base ends worse (0.63) than apex ends (0.77); prostate predicted on 1-11 slices beyond the true extent in 25/30 volumes | Tracked, boundary gap remains | [Dilemma](#8-open-research-dilemma-2d-vs-3d-context) |
+| AC2 | Clinical boundary utility | Track base/apex slice accuracy; avoid leakage into critical OARs | End-slice Dice **0.70** vs central **0.885**; base ends worse (0.63) than apex ends (0.77); prostate predicted on 1-11 slices beyond the true extent in 25/30 volumes; leakage into the bladder/rectum not measured separately | Tracked, boundary gap remains | [Dilemma](#8-open-research-dilemma-2d-vs-3d-context) |
 | AC3 | Resource footprint | Peak GPU memory <= 16 GB | Training **7.83 GB**, inference **3.36 GB** | Met | [Results](#7-results) |
 | AC4 | Runtime / throughput | Inference fast enough for drafting | **79.4 ms** per volume | Met | [Results](#7-results) |
 
-**[Updated] Changes from the original review:**
+### [Updated] Changes since the review
 - **Hardware:** trained on Rangpur rather than a single Colab T4/L4. The 7.83 GB peak would still fit on a
   16 GB T4.
 - **Cost estimate:** the review estimated ~16 GB of VRAM and 16-25 hours for 100 epochs of 3D training. The
@@ -120,9 +159,10 @@ All volumes are loaded and resized once at start-up, so the compressed files are
 - Random brightness/contrast change and Gaussian noise (image only).
 
 **Splits.** 
-Patients are shuffled with a fixed seed (42) and split 80/10/10. As every weekly scan of a patient 
-lands in the same split, splitting volumes would leak test data into the train data jeopardising
-future results.`check_patient_leakage` confirms that the splits are disjoint.
+Patients are shuffled with a fixed seed (42) and split approximately 80/10/10. Splitting by volume would
+put weekly scans of the same patient in different splits and leak test data into training, so every
+weekly scan of a patient is kept in the same split. `check_patient_leakage` confirms that the splits are
+patient-disjoint.
 
 | Split | Patients | Volumes |
 |-------|----------|---------|
@@ -237,6 +277,7 @@ whole split rather than averaged per volume.
 Latency is measured on the GPU after one warm-up pass, synchronising before and after each forward pass.
 
 **AC3 (≤ 16 GB): met** (7.8 GB peak). **AC4 (fast enough for drafting): met** (79 ms per volume).
+
 ## 8. Open Research Dilemma: 2D vs 3D Context
 ### Boundary vs central slices
 `predict.py` measures prostate Dice on every axial slice and separates the slices at each end of the
@@ -251,8 +292,7 @@ and 2 at half resolution, both about 6 mm.
 Doubling the resolution raised central-slice Dice by 0.016 and overall prostate Dice by 0.020, but did
 nothing for the end slices (0.707 → 0.700). Even with full 3D context, the model loses about 0.19 Dice
 at the ends of the gland, and the base is clearly the worst. **AC2 (base/apex tracking): the boundary
-gap remains.** This is due to the fact that extra context and resolution mostly improve the slices that 
-were already easy.
+gap remains.** Extra context and resolution mostly improved the slices that were already easy.
 
 ### Failure case autopsy
 The slice axis is the scanner's axial axis; the end with the bladder in view (high slice numbers) is
@@ -264,16 +304,17 @@ recurring modes:
 Two slices below the last annotated prostate slice, the model incorrectly predicts a small prostate 
 blob directly in front of the rectum (in red). In 25/30 volumes, the model predicts the prostate on 1-11 slices
 (mean of 3.1) beyond where the ground truth stops. As the prostate tapers smoothly into the surrounding
-tissue, the gland "ends" are partly an annotation decision and the 3D model that has learned a smooth
-gland shape, thus it extrapolates it. All five lowest-scoring slices that `predict.py` reported are
-of this type.
+tissue, where the gland "ends" is partly an annotation decision, and the 3D model, having learned a
+smooth gland shape, extrapolates it past that point. Four of the five lowest-scoring slices that
+`predict.py` reported are over-extensions (three past the apex, one past the base); the fifth is the base
+miss below.
 
 **2. Missed base at the bladder neck: J026_Week0, slice 67 (Dice 0).**
 ![Base miss](images/failure_base_miss.png)
 On the last annotated slice, the prostate sits between the bladder and the rectum, and the model misses
 it completely (in blue), labelling the area as body tissue. In 11/30 volumes, the last base slice scores
-Dice ≤ 0.1, and the base end averages 0.630. This is potentially caused by the bladder neck, prostate
-and bladder wall having similar T2 intensity and the boundary between them blurred by partial volume.
+Dice ≤ 0.1, and the base end averages 0.630. A likely cause is that, at the bladder neck, the prostate
+and bladder wall have similar T2 intensity and the boundary between them is blurred by partial volume.
 
 **3. Whole apex missed: R039_Week0, slices 33-36.** The first four annotated slices (about 6 mm) have
 Dice 0, while the rest of the gland is segmented well (0.66-0.81 at the base end). This is the only
@@ -290,32 +331,37 @@ anatomy decides which failures are visible.
 **Unsuitable for automated drafting:** the base slices next to the bladder neck, and the first and last
 few slices of the predicted extent (where over-extension occurs). The central gland is reliable
 (Dice 0.885 on central slices).
+
 ## 9. Recommendation
 It is recommended to use the 3D Improved U-Net as a ***drafting tool*** for the body of the
 prostate, but never as the final contour at the base or apex.
 
-3D Improved U-Net provides comparable accuracy compared to the 2D baseline (0.856 vs. 0.882) smooth
-contours along scan axis, and whole-volume inference in 79ms with a model a third of the size of the
-2D baseline. Unfortunately, base and apex Dice were approximately 0.70 for both resolutions, so 3D
-context does not remove clinically dangerous errors. Over-extension and under-segmentation will lead
+At full resolution, the 3D Improved U-Net gives accuracy comparable to the 2D baseline (prostate Dice
+0.856 vs. 0.882) and whole-volume inference in 79 ms, with a model a third of the size of the 2D
+baseline. Unfortunately, base and apex Dice were approximately 0.70 at both resolutions, so 3D context
+alone does not remove the clinically dangerous errors at the ends of the gland. Over-extension and under-segmentation will lead
 to separate risks that can be avoided by manual inspection.
 
-Half resolution is the cheapest option tested (0.47 GB, 11ms/volume, 13 mins training). Full
-resolution costs about 7x more memory and time for +0.02 Dice, improving in slices that were already
-performant. Both fit within the 16 GB budget so it's affordable, but not justified.
+Half resolution is the cheapest option tested (2.1 GB training / 0.47 GB inference VRAM, 11 ms per
+volume, 13 min training). Full resolution costs about 3.8x the training memory, 7x the inference memory
+and time, and about 9x the training time, for +0.02 prostate Dice, gained in slices that were already
+performant. Both fit within the 16 GB budget, so full resolution is affordable but not justified:
+**half resolution is the recommended configuration.**
 
-A clinician must review and edit each end (approximately 6mm) of the prostate prediction, with particular
-care at the bladder neck, checking 1-3 slices beyond the predicted extent for spurious prostate.
+A clinician must review and edit each end (approximately 6 mm) of the prostate prediction, with
+particular care at the bladder neck, and check the slices beyond each end of the predicted extent for
+spurious prostate (it over-extends by 1-11 slices, 3 on average).
 
 ## 10. Limitations and Next Steps
 
 As 2D and 3D were tested independently, the baseline comparison is between two different splits.
 The next experiment should use an identical split to more accurately evaluate models. A larger test
-set would also improve results for the experiment. As each run was only run once, run-to-run variance
-was not measured.
+set would also improve results for the experiment. The 2D baseline's end-slice Dice was not measured,
+so the boundary comparison rests on the 3D results. As each model was only trained once, run-to-run
+variance was not measured.
 
 Adding boundary-aware loss or extra weight on end slices would improve the next iteration of the model
-as well as post-processing that keeps the largest connected prostate component and trimming the
+as well as post-processing that keeps the largest connected prostate component and trims the
 predicted extent.
 
 ## 11. Artificial Intelligence Usage Disclosure
@@ -334,7 +380,7 @@ predicted extent.
   - Checked the architecture against Isensee et al. [2] and the loader against spec Appendix B.
   - On real data:
     - confirmed the patient split has no leakage;
-    - confirmed `predict.py` reproduces `train.py`'s test scores exactly;
+    - confirmed `predict.py` reproduces `train.py`'s test scores exactly.
 
 ## 12. References
 1. O. Ronneberger, P. Fischer, T. Brox, "U-Net: Convolutional networks for biomedical image segmentation," in Proc. MICCAI, 2015, pp. 234-241. https://arxiv.org/abs/1505.04597
