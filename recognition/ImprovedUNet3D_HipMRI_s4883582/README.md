@@ -314,14 +314,21 @@ care ate the bladder neck, checking 1-3 slices beyond the predicted extent for s
 
 ## 10. Limitations and Next Steps
 
+As 2D and 3D were tested independently, the baseline comparsion is between two different splits.
+The next experiment should use an identical split to more accurately evaluate models. A larger test
+set would also improve results for the experiment. As each run was only run once, run-to-run variance
+was not measured.
+
+Adding boundary-aware loss or extra weight on end slices would improve the next iteration of the model
+as well as post-processing that keeps the largest connected prostate component and trimming the
+predicted extent.
 
 ## 11. Artificial Intelligence Usage Disclosure
-- **Tool used:** Claude (Anthropic), through Claude Code.
+- **Tool used:** Claude Opus 5.5.
 - **Tasks it assisted with:**
   - Planning the 3D work from the spec and my 2D baseline.
   - Initial scaffolding of the 3D `dataset.py`, `modules.py`, `train.py`, `predict.py` and `utils.py`, adapted from my
     own 2D code.
-  - Explaining the Slurm setup.
   - Scaffolding the initial README design.
 - **How I verified it:**
   - Ran every script on synthetic Nifti volumes before using real data:
