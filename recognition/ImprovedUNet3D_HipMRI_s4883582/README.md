@@ -96,6 +96,42 @@ checked below against the final full-resolution 3D run, with a link to where the
   the loss.
 
 ## 4. Data, Pre-processing and Splits
+**Data.** HipMRI Study 3D volumes on Rangpur: images in `semantic_MRs`, labels in `semantic_labels_only`
+(211 volumes, 38 patients, up to 8 weekly scans per patient). Files are paired by name
+(`B006_Week0_LFOV.nii.gz` ↔ `B006_Week0_SEMANTIC.nii.gz`) rather than by sorted order.
+
+**Pre-processing** ([`dataset.py`](dataset.py)):
+1. Load with nibabel and drop any trailing 4th dimension (adapted from the spec's Appendix B loader).
+2. Clip to the first 128 slices, so the one 144-slice volume has the same depth and spacing as the rest
+   (as Appendix B does).
+3. Z-score normalise each image volume (raw intensities range from 0 to ~600 and vary between scans).
+4. Resize to `VOLUME_SIZE`: trilinear interpolation for images, **nearest-neighbour for masks** so class
+   labels are never blended. The final model uses the native 256×256×128; the first experiment used
+   128×128×64.
+5. Keep masks as integer class indices; the loss one-hot encodes them internally.
+
+All volumes are loaded and resized once at start-up, so the compressed files are not decoded every epoch.
+
+**Augmentation** (training split only, applied identically to image and mask):
+- Random left-right flip. Only left-right: the pelvis is roughly symmetric that way, while flipping the
+  other axes would put the bladder below the prostate, which never occurs in a real scan.
+- Random in-plane rotation (±10°) and isotropic scaling (0.9-1.1×), which also covers the 1.41-1.88 mm
+  spread in voxel size between scans.
+- Random brightness/contrast change and Gaussian noise (image only).
+
+**Splits.** 
+Patients are shuffled with a fixed seed (42) and split 80/10/10. As every weekly scan of a patient 
+lands in the same split, splitting volumes would leak test data into the train data jeopardising
+future results.`check_patient_leakage` confirms that the splits are disjoint.
+
+| Split | Patients | Volumes |
+|-------|----------|---------|
+| Train | 30 | 163 |
+| Validation | 4 | 18 |
+| Test | 4 (J026, M030, R039, S022) | 30 |
+
+The best checkpoint is chosen on validation prostate Dice, and the test split is used only once, 
+at the end.
 
    
 ## 6. Dependencies and Reproducibility
