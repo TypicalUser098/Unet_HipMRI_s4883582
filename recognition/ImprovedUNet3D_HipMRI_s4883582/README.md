@@ -5,6 +5,23 @@
 
 ## Contents
 1. [Problem](#1-problem)
+
+External-beam radiotherapy for different cancers is a millimetre precise therapy. For prostate cancer,
+it needs the prostate contoured on MRI whilst avoiding other vital areas like the bladder and rectum.
+Over-contouring will irradiate healthy organs and tissue potentially causing cystitis or proctitis.
+Under-contouring leaves untreated tumour behind potentially leading to the cancer not regressing completely.
+As contouring by hand is slow and tedious, automatic drafting with slight corrections can save time
+as long as errors produced are predictable.
+
+This prototype segments six classes in each image (background, body, bone, bladder, rectum, prostate)
+in 3D pelvic MRI volumes from the HipMRI study. As the prostate only occupies approximately 0.1-0.3%
+of each volume, it is simultaneously the most difficult and most critical class to target. With 
+this, the following can be answered:
+
+**Does true 3D volumetric context fix the boundary errors at the prostate base and apex that a 2D 
+slice-by-slice model makes, or does it only improve the easy central slices while costing more GPU 
+memory and time?**
+
 2. [Algorithm](#2-algorithm)
 3. [Feasibility Review](#3-feasibility-review)
 4. [Data, Pre-processing and Splits](#4-data-pre-processing-and-splits)
