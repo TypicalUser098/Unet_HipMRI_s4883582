@@ -1,5 +1,6 @@
 # 2D U-Net Baseline for Prostate Segmentation on HipMRI
 
+# SEE 3D IMPROVED UNET FOR BREAKDOWN, THIS IS BASELINE
 This folder contains the **2D U-Net baseline** for the 3D Improved U-Net project. The full report
 (problem description, feasibility review, results, failure analysis and recommendation) is in
 [`../ImprovedUNet3D_HipMRI_s4883582/README.md`](../ImprovedUNet3D_HipMRI_s4883582/README.md).

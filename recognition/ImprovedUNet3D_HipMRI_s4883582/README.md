@@ -68,10 +68,36 @@ U-Net's 31.0M.
 
 ## 3. Feasibility Review
 
+The feasibility review set out the users (imaging specialists planning external-beam radiotherapy), the
+dilemma (spatial context vs. clinical boundary utility) and four acceptance criteria. Each criterion is
+checked below against the final full-resolution 3D run, with a link to where the evidence is in this README.
+
+| ID | Dimension | Target (from review) | Result | Status | Evidence |
+|----|-----------|----------------------|--------|--------|----------|
+| AC1 | Task performance | Prostate Dice > 0.7 on the HipMRI test set | Test prostate Dice **0.8556** (IoU 0.7476) | Met | [Results](#7-results) |
+| AC2 | Clinical boundary utility | Track base/apex slice accuracy; avoid leakage into critical OARs | End-slice Dice **0.70** vs central **0.885**; base ends worse (0.63) than apex ends (0.77); prostate predicted on 1-11 slices beyond the true extent in 25/30 volumes | Tracked, boundary gap remains | [Dilemma](#8-open-research-dilemma-2d-vs-3d-context) |
+| AC3 | Resource footprint | Peak GPU memory <= 16 GB | Training **7.83 GB**, inference **3.36 GB** | Met | [Results](#7-results) |
+| AC4 | Runtime / throughput | Inference fast enough for drafting | **79.4 ms** per volume | Met | [Results](#7-results) |
+
+**[Updated] Changes from the original review:**
+- **Hardware:** trained on Rangpur rather than a single Colab T4/L4. The 7.83 GB peak would still fit on a
+  16 GB T4.
+- **Cost estimate:** the review estimated ~16 GB of VRAM and 16-25 hours for 100 epochs of 3D training. The
+  actual run used 7.83 GB and ~1.9 hours for 123 epochs (~57 s per epoch), with batch size 1 and mixed
+  precision.
+- **Loss:** cross-entropy + Dice was used rather than Dice/Focal. The prostate Dice never collapsed to zero,
+  so Focal loss was not needed.
+- **Same test data:** the review planned to evaluate 2D and 3D on the same test patients. The final 3D split
+  is independent of the 2D one, so the comparison is on different test patients (see
+  [Limitations](#10-limitations-and-next-steps)).
+- **Risks:** the unexpected image risk did occur: one volume has 144 slices instead of 128. It is clipped
+  to 128 in `load_nifti_volume` rather than rejected, and any 4D volume is reduced to 3D the same way
+  (see [Data](#4-data-pre-processing-and-splits)). The class imbalance risk was handled by the Dice term in
+  the loss.
+
 ## 4. Data, Pre-processing and Splits
 
-## 5. Usage
-
+   
 ## 6. Dependencies and Reproducibility
 
 ## 7. Results
