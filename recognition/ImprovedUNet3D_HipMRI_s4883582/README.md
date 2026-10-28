@@ -37,7 +37,7 @@ As contouring by hand is slow and tedious, automatic drafting with slight correc
 as long as errors produced are predictable.
 
 This prototype segments six classes in each image (background, body, bone, bladder, rectum, prostate)
-in 3D pelvic MRI volumes from the HipMRI study. As the prostate only occupies approximately 0.1-0.3%
+in 3D pelvic MRI volumes from the HipMRI study [4]. As the prostate only occupies approximately 0.1-0.3%
 of each volume, it is simultaneously the most difficult and most critical class to target. With 
 this, the following can be answered:
 
@@ -48,20 +48,20 @@ memory and time?**
 ## 2. Algorithm
 
 The model utilised is the 3D Improved U-Net of Isensee et al. [2], implemented from the paper in
-PyTorch ([`modules.py`](modules.py)). Like a regular 2D U-Net [1, 3], an encoder repeatedly halves the
+PyTorch [13] ([`modules.py`](modules.py)). Like a regular 2D U-Net [1, 3], an encoder repeatedly halves the
 input resolution to build up context and a decoder upsamples the resultant image back into full
-resolution, with skip connections carrying fine details across. Insensee's changes to the original
+resolution, with skip connections carrying fine details across. Isensee's changes to the original
 model makes it better in theory for small, imbalanced medical datasets.
 
 Firstly, Residual context modules are used to downsample with a stride-2 3x3x3 convolution. Then it
-applies a pre-activation residual block (being norm → LeakyReLU → conv → dropout 0.3 → norm → LeakyReLU →
-  conv, added to its input). Instance normalisation and LeakyReLU (0.01) with batches of 1-2 volumes
-were also used. The decoder upsamples by repeating voxels (avoiding checkerboard artefacts), concatenates
+applies a pre-activation residual block [5] (being norm → LeakyReLU → conv → dropout 0.3 [6] → norm → LeakyReLU →
+  conv, added to its input). Instance normalisation [7] and LeakyReLU (0.01) with batches of 1-2 volumes
+were also used. The decoder upsamples by repeating voxels (avoiding checkerboard artefacts [8]), concatenates
 the skip connection, then recombines features with a 3x3x3 and 1x1x1 convolution. Segmentation layers
-at 1/4, 1/2, and full resolution are upscaled and summed into the output so gradients reach lower decoder
+at 1/4, 1/2, and full resolution are upscaled and summed into the output (deep supervision [9]) so gradients reach lower decoder
 layers directly.
 
-The loss is cross-entropy plus soft multi-class Dice (the same as the 2D baseline). Dice weighs every class
+The loss is cross-entropy plus soft multi-class Dice [10] (the same as the 2D baseline). Dice weighs every class
 equally regardless of size, so the tiny prostate is not drowned out by background; cross-entropy keeps
 voxel-wise gradients stable early in training. The model has **9.46M parameters**, a third of the 2D
 U-Net's 31.0M.
@@ -96,7 +96,7 @@ checked below against the final full-resolution 3D run, with a link to where the
   the loss.
 
 ## 4. Data, Pre-processing and Splits
-**Data.** HipMRI Study 3D volumes on Rangpur: images in `semantic_MRs`, labels in `semantic_labels_only`
+**Data.** HipMRI Study 3D volumes [4] on Rangpur: images in `semantic_MRs`, labels in `semantic_labels_only`
 (211 volumes, 38 patients, up to 8 weekly scans per patient). Files are paired by name
 (`B006_Week0_LFOV.nii.gz` ↔ `B006_Week0_SEMANTIC.nii.gz`) rather than by sorted order.
 
@@ -154,6 +154,7 @@ at the end.
    conda activate torch
    cd ~/Unet_HipMRI_s4883582/recognition/ImprovedUNet3D_HipMRI_s4883582
    python -u train.py && python -u predict.py
+   ```
 
 3. Outputs in `outputs/`:
 
@@ -186,9 +187,9 @@ Install with `pip install -r requirements.txt`.
 
 Training ran on a single NVIDIA GPU on Rangpur (`a100` partition).
 
-**Hyperparameters** ([`train.py`](train.py)): Adam, learning rate 5e-4 decayed ×0.985 per epoch (as in
+**Hyperparameters** ([`train.py`](train.py)): Adam [11], learning rate 5e-4 decayed ×0.985 per epoch (as in
 [2]), weight decay 1e-5, batch size 1 (full resolution) or 2 (half resolution), up to 200 epochs, early
-stopping after 40 epochs without a validation prostate Dice improvement, mixed precision (float16
+stopping after 40 epochs without a validation prostate Dice improvement, mixed precision [12] (float16
 autocast with gradient scaling, Dice computed in float32).
 
 **Reproducibility.** The patient split is deterministic (seeded `torch.randperm` over sorted patient IDs),
@@ -205,8 +206,8 @@ the ends, especially the base.*
 
 ![Training curves](images/unet3d_training_curves.png)
 
-Training and validation losses fall together and level off at about 0.07 and 0.10) with no upturn in
-validation loss. Validation Dice passes 0.7 by epoch 0.5 and plateaus at approximately 0.87 from
+Training and validation losses fall together and level off (at about 0.07 and 0.10) with no upturn in
+validation loss. Validation Dice passes 0.7 by epoch 5 and plateaus at approximately 0.87 from
 epoch 40. The best checkpoint came from epoch 83 and was stopped early at epoch 123. This contrasts
 with the 2D baseline, in which the validation loss started rising after epoch 8.
 
@@ -229,13 +230,13 @@ whole split rather than averaged per volume.
 ### Resource profiling
 | Model | Parameters | Peak training VRAM | Peak inference VRAM | Inference latency | Training time |
 |-------|-----------|--------------------|---------------------|-------------------|---------------|
-| 2D U-Net | 31.04M | not measured | 1,219.5 MB (batch 16) | 1.35 ms per slice | 50 epochs |
+| 2D U-Net | 31.04M | not measured | 1,219.5 MB (batch 16) | 1.35 ms per slice | not measured (50 epochs) |
 | 3D half res (128×128×64) | 9.46M | 2,054.8 MB (batch 2) | 468.7 MB (batch 1) | 11.2 ms per volume | ~13 min (107 epochs × ~7 s) |
 | 3D full res (256×256×128) | 9.46M | 7,834.9 MB (batch 1) | 3,359.4 MB (batch 1) | 79.4 ms per volume (≈0.62 ms per slice) | ~1.9 h (123 epochs × ~57 s) |
 
 Latency is measured on the GPU after one warm-up pass, synchronising before and after each forward pass.
 
-**AC3 (≤ 16 GB): met** (7.8 GB peak). **AC4 (< 1 s per volume): met** (79 ms).
+**AC3 (≤ 16 GB): met** (7.8 GB peak). **AC4 (fast enough for drafting): met** (79 ms per volume).
 ## 8. Open Research Dilemma: 2D vs 3D Context
 ### Boundary vs central slices
 `predict.py` measures prostate Dice on every axial slice and separates the slices at each end of the
@@ -249,8 +250,8 @@ and 2 at half resolution, both about 6 mm.
 
 Doubling the resolution raised central-slice Dice by 0.016 and overall prostate Dice by 0.020, but did
 nothing for the end slices (0.707 → 0.700). Even with full 3D context, the model loses about 0.19 Dice
-at the ends of the gland, and the base is clearly the worst. **AC2 (end slices within 0.05 of central):
-not met.** This is due to the fact that extra context and resolution mostly improve the slices that 
+at the ends of the gland, and the base is clearly the worst. **AC2 (base/apex tracking): the boundary
+gap remains.** This is due to the fact that extra context and resolution mostly improve the slices that 
 were already easy.
 
 ### Failure case autopsy
@@ -274,12 +275,6 @@ it completely (in blue), labelling the area as body tissue. In 11/30 volumes, th
 Dice ≤ 0.1, and the base end averages 0.630. This is potentially caused by the bladder neck, prostate
 and bladder wall having similar T2 intensity and the boundary between them blurred by partial volume.
 
-On the last annotated slice, the prostate sits between the bladder and the rectum, and the model misses
-it completely (blue), labelling the area as surrounding body tissue. In **11 of 30** volumes the last base slice
-scores Dice ≤ 0.1 (against 2 of 30 at the apex), and the base end averages 0.630. *Root trigger:* at the
-bladder neck, the prostate and bladder wall have similar T2 intensity and the boundary between them is
-blurred by partial volume, so the model takes the boundary from the much larger bladder class.
-
 **3. Whole apex missed: R039_Week0, slices 33-36.** The first four annotated slices (about 6 mm) have
 Dice 0, while the rest of the gland is segmented well (0.66-0.81 at the base end). This is the only
 volume where the apex is missed over several slices, so it is rare but large when it happens.
@@ -296,8 +291,8 @@ anatomy decides which failures are visible.
 few slices of the predicted extent (where over-extension occurs). The central gland is reliable
 (Dice 0.885 on central slices).
 ## 9. Recommendation
-It is recommended to use the 3D Improved U-Net as a ***drafting tool*** for the body of the body of 
-the prostate, but never as the final contour at the base or apex.
+It is recommended to use the 3D Improved U-Net as a ***drafting tool*** for the body of the
+prostate, but never as the final contour at the base or apex.
 
 3D Improved U-Net provides comparable accuracy compared to the 2D baseline (0.856 vs. 0.882) smooth
 contours along scan axis, and whole-volume inference in 79ms with a model a third of the size of the
@@ -310,11 +305,11 @@ resolution costs about 7x more memory and time for +0.02 Dice, improving in slic
 performant. Both fit within the 16 GB budget so it's affordable, but not justified.
 
 A clinician must review and edit each end (approximately 6mm) of the prostate prediction, with particular
-care ate the bladder neck, checking 1-3 slices beyond the predicted extent for spurious prostate.
+care at the bladder neck, checking 1-3 slices beyond the predicted extent for spurious prostate.
 
 ## 10. Limitations and Next Steps
 
-As 2D and 3D were tested independently, the baseline comparsion is between two different splits.
+As 2D and 3D were tested independently, the baseline comparison is between two different splits.
 The next experiment should use an identical split to more accurately evaluate models. A larger test
 set would also improve results for the experiment. As each run was only run once, run-to-run variance
 was not measured.
@@ -342,6 +337,16 @@ predicted extent.
     - confirmed `predict.py` reproduces `train.py`'s test scores exactly;
 
 ## 12. References
-1. O. Ronneberger, P. Fischer, T. Brox, "U-Net: Convolutional networks for biomedical image segmentation," MICCAI, 2015.
-2. F. Isensee, P. Kickingereder, W. Wick, M. Bendszus, K. H. Maier-Hein, "Brain tumor segmentation and radiomics survival prediction: Contribution to the BRATS 2017 challenge," BrainLes (MICCAI), 2018.
-3. Ö. Çiçek, A. Abdulkadir, S. S. Lienkamp, T. Brox, O. Ronneberger, "3D U-Net: Learning dense volumetric segmentation from sparse annotation," MICCAI, 2016.
+1. O. Ronneberger, P. Fischer, T. Brox, "U-Net: Convolutional networks for biomedical image segmentation," in Proc. MICCAI, 2015, pp. 234-241. https://arxiv.org/abs/1505.04597
+2. F. Isensee, P. Kickingereder, W. Wick, M. Bendszus, K. H. Maier-Hein, "Brain tumor segmentation and radiomics survival prediction: Contribution to the BRATS 2017 challenge," in Brainlesion: Glioma, Multiple Sclerosis, Stroke and TBI Models, 2018, pp. 287-297. https://arxiv.org/abs/1802.10508
+3. Ö. Çiçek, A. Abdulkadir, S. S. Lienkamp, T. Brox, O. Ronneberger, "3D U-Net: Learning dense volumetric segmentation from sparse annotation," in Proc. MICCAI, 2016, pp. 424-432. https://arxiv.org/abs/1606.06650
+4. J. Dowling, P. Greer, "Labelled weekly MR images of the male pelvis," CSIRO Data Collection, v2, 2021. https://doi.org/10.25919/45t8-p065
+5. K. He, X. Zhang, S. Ren, J. Sun, "Identity mappings in deep residual networks," ECCV, 2016. https://arxiv.org/abs/1603.05027
+6. N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, R. Salakhutdinov, "Dropout: A simple way to prevent neural networks from overfitting," JMLR, vol. 15, pp. 1929-1958, 2014. https://jmlr.org/papers/v15/srivastava14a.html
+7. D. Ulyanov, A. Vedaldi, V. Lempitsky, "Instance normalization: The missing ingredient for fast stylization," arXiv:1607.08022, 2016. https://arxiv.org/abs/1607.08022
+8. A. Odena, V. Dumoulin, C. Olah, "Deconvolution and checkerboard artifacts," Distill, 2016. https://doi.org/10.23915/distill.00003
+9. C.-Y. Lee, S. Xie, P. Gallagher, Z. Zhang, Z. Tu, "Deeply-supervised nets," AISTATS, 2015. https://proceedings.mlr.press/v38/lee15a.html
+10. F. Milletari, N. Navab, S.-A. Ahmadi, "V-Net: Fully convolutional neural networks for volumetric medical image segmentation," 3DV, 2016. https://doi.org/10.1109/3DV.2016.79
+11. D. P. Kingma, J. Ba, "Adam: A method for stochastic optimization," ICLR, 2015. https://arxiv.org/abs/1412.6980
+12. P. Micikevicius et al., "Mixed precision training," ICLR, 2018. https://arxiv.org/abs/1710.03740
+13. A. Paszke et al., "PyTorch: An imperative style, high-performance deep learning library," arXiv:1912.01703, 2019. https://arxiv.org/abs/1912.01703
