@@ -197,9 +197,104 @@ timing are not fully deterministic, so retraining gives close but not bit-identi
 deterministic: `predict.py` reproduced `train.py`'s test scores exactly from the saved checkpoint.
 
 ## 7. Results
+![Per-slice prostate Dice on the test volumes](images/unet3d_per_slice_dice.png)
 
+*Prostate Dice for every slice of every test volume, plotted against position within the ground-truth
+prostate (0 = apex end, 1 = base end). The model is accurate through the body of the gland and fails at
+the ends, especially the base.*
+
+![Training curves](images/unet3d_training_curves.png)
+
+Training and validation losses fall together and level off at about 0.07 and 0.10) with no upturn in
+validation loss. Validation Dice passes 0.7 by epoch 0.5 and plateaus at approximately 0.87 from
+epoch 40. The best checkpoint came from epoch 83 and was stopped early at epoch 123. This contrasts
+with the 2D baseline, in which the validation loss started rising after epoch 8.
+
+### Test set (4 patients, 30 volumes)
+| Class | 3D full res Dice | 3D full res IoU | 3D half res Dice | 3D half res IoU | 2D U-Net Dice* | 2D U-Net IoU* |
+|-------|------|------|------|------|------|------|
+| Background | 0.9963 | 0.9926 | 0.9927 | 0.9855 | 0.9970 | 0.9941 |
+| Body | 0.9866 | 0.9736 | 0.9792 | 0.9593 | 0.9848 | 0.9700 |
+| Bone | 0.9297 | 0.8687 | 0.9128 | 0.8395 | 0.9353 | 0.8785 |
+| Bladder | 0.9617 | 0.9263 | 0.9452 | 0.8961 | 0.9667 | 0.9356 |
+| Rectum | 0.8843 | 0.7926 | 0.8617 | 0.7570 | 0.8635 | 0.7598 |
+| **Prostate** | **0.8556** | **0.7476** | 0.8355 | 0.7175 | 0.8823 | 0.7894 |
+
+\*The 2D U-Net was evaluated on its own held-out split (3 patients, 540 slices), not on the same patients
+as the 3D model; see [Limitations](#10-limitations-and-next-steps). Dice and IoU are accumulated over the
+whole split rather than averaged per volume.
+
+**AC1 (prostate Dice > 0.7): met**, at 0.8556.
+
+### Resource profiling
+| Model | Parameters | Peak training VRAM | Peak inference VRAM | Inference latency | Training time |
+|-------|-----------|--------------------|---------------------|-------------------|---------------|
+| 2D U-Net | 31.04M | not measured | 1,219.5 MB (batch 16) | 1.35 ms per slice | 50 epochs |
+| 3D half res (128×128×64) | 9.46M | 2,054.8 MB (batch 2) | 468.7 MB (batch 1) | 11.2 ms per volume | ~13 min (107 epochs × ~7 s) |
+| 3D full res (256×256×128) | 9.46M | 7,834.9 MB (batch 1) | 3,359.4 MB (batch 1) | 79.4 ms per volume (≈0.62 ms per slice) | ~1.9 h (123 epochs × ~57 s) |
+
+Latency is measured on the GPU after one warm-up pass, synchronising before and after each forward pass.
+
+**AC3 (≤ 16 GB): met** (7.8 GB peak). **AC4 (< 1 s per volume): met** (79 ms).
 ## 8. Open Research Dilemma: 2D vs 3D Context
+### Boundary vs central slices
+`predict.py` measures prostate Dice on every axial slice and separates the slices at each end of the
+ground-truth prostate (base and apex) from the central ones. The end zone is 4 slices at full resolution
+and 2 at half resolution, both about 6 mm.
 
+| Model | End slices (base + apex) | Apex end | Base end | Central slices |
+|-------|--------------------------|----------|----------|----------------|
+| 3D half res | 0.7072 (120 slices) | - | - | 0.8694 (242 slices) |
+| 3D full res | 0.6996 (240 slices) | 0.769 | **0.630** | 0.8852 (492 slices) |
+
+Doubling the resolution raised central-slice Dice by 0.016 and overall prostate Dice by 0.020, but did
+nothing for the end slices (0.707 → 0.700). Even with full 3D context, the model loses about 0.19 Dice
+at the ends of the gland, and the base is clearly the worst. **AC2 (end slices within 0.05 of central):
+not met.** This is due to the fact that extra context and resolution mostly improve the slices that 
+were already easy.
+
+### Failure case autopsy
+The slice axis is the scanner's axial axis; the end with the bladder in view (high slice numbers) is
+the base, and the opposite end is the apex. Across the 30 test volumes the errors fall into a few
+recurring modes:
+
+**1. Over-extension past the apex: J026_Week0, slice 44 (Dice 0).**
+![Apex over-extension](images/failure_apex_overextension.png)
+Two slices below the last annotated prostate slice, the model incorrectly predicts a small prostate 
+blob directly in front of the rectum (in red). In 25/30 volumes, the model predicts the prostate on 1-11 slices
+(mean of 3.1) beyond where the ground truth stops. As the prostate tapers smoothly into the surrounding
+tissue, the gland "ends" are partly an annotation decision and the 3D model that has learned a smooth
+gland shape, thus it extrapolates it. All five lowest-scoring slices that `predict.py` reported are
+of this type.
+
+**2. Missed base at the bladder neck: J026_Week0, slice 67 (Dice 0).**
+![Base miss](images/failure_base_miss.png)
+On the last annotated slice, the prostate sits between the bladder and the rectum, and the model misses
+it completely (in blue), labelling the area as body tissue. In 11/30 volumes, the last base slice scores
+Dice ≤ 0.1, and the base end averages 0.630. This is potentially caused by the bladder neck, prostate
+and bladder wall having similar T2 intensity and the boundary between them blurred by partial volume.
+
+On the last annotated slice, the prostate sits between the bladder and the rectum, and the model misses
+it completely (blue), labelling the area as surrounding body tissue. In **11 of 30** volumes the last base slice
+scores Dice ≤ 0.1 (against 2 of 30 at the apex), and the base end averages 0.630. *Root trigger:* at the
+bladder neck, the prostate and bladder wall have similar T2 intensity and the boundary between them is
+blurred by partial volume, so the model takes the boundary from the much larger bladder class.
+
+**3. Whole apex missed: R039_Week0, slices 33-36.** The first four annotated slices (about 6 mm) have
+Dice 0, while the rest of the gland is segmented well (0.66-0.81 at the base end). This is the only
+volume where the apex is missed over several slices, so it is rare but large when it happens.
+
+**4. Both ends wrong at once: S022_Week6.** Prostate is predicted on 3 slices below the annotated apex,
+while the last 3 annotated base slices have zero overlap. All 8 weekly scans of S022 over-extend by 2-4
+slices, so the error is consistent within a patient.
+
+**5. One patient dominates the worst cases.** All five lowest-ranked slices come from patient J026,
+just as all five worst 2D slices came from patient 040. With 3-4 test patients, a single difficult
+anatomy decides which failures are visible.
+
+**Unsuitable for automated drafting:** the base slices next to the bladder neck, and the first and last
+few slices of the predicted extent (where over-extension occurs). The central gland is reliable
+(Dice 0.885 on central slices).
 ## 9. Recommendation
 
 ## 10. Limitations and Next Steps
