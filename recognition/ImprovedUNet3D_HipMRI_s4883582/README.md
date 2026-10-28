@@ -155,8 +155,46 @@ at the end.
    cd ~/Unet_HipMRI_s4883582/recognition/ImprovedUNet3D_HipMRI_s4883582
    python -u train.py && python -u predict.py
 
+3. Outputs in `outputs/`:
+
+| Script | Prints | Saves |
+|--------|--------|-------|
+| [`train.py`](train.py) | Split sizes, per-epoch loss and validation prostate Dice, peak training VRAM, final test Dice/IoU | `unet3d_best.pt`, `unet3d_training_curves.png` |
+| [`predict.py`](predict.py) | Test Dice/IoU per class, parameters, latency, peak inference VRAM, end vs central slice Dice, worst slices | `unet3d_per_slice_dice.png/.csv`, `unet3d_failure_1..5.png` |
+
+| File | Purpose |
+|------|---------|
+| [`modules.py`](modules.py) | 3D Improved U-Net, Dice loss, combined CE + Dice loss (PyTorch only) |
+| [`dataset.py`](dataset.py) | Nifti loading, pre-processing, patient-level split, 3D augmentation, leakage check |
+| [`utils.py`](utils.py) | Per-class Dice/IoU accumulated over a split; per-slice Dice |
+| [`train.py`](train.py) | Training with mixed precision, LR decay, early stopping, checkpointing, plots, test evaluation |
+| [`predict.py`](predict.py) | Test evaluation, resource profiling, per-slice analysis, failure figures |
    
 ## 6. Dependencies and Reproducibility
+| Package | Version |
+|---------|---------|
+| Python | 3.11 |
+| PyTorch | 2.13.0 (CUDA 13.0) |
+| NumPy | 2.4.6 |
+| nibabel | 5.4.2 |
+| matplotlib | 3.11.2 |
+| python-dotenv | 1.2.4 |
+
+[`requirements.txt`](requirements.txt) is the `pip freeze` of the conda environment used on Rangpur, without
+the Linux-only CUDA packages (`nvidia-*`, `cuda-*`, `triton`), which `torch` installs itself on Linux.
+Install with `pip install -r requirements.txt`.
+
+Training ran on a single NVIDIA GPU on Rangpur (`a100` partition).
+
+**Hyperparameters** ([`train.py`](train.py)): Adam, learning rate 5e-4 decayed ×0.985 per epoch (as in
+[2]), weight decay 1e-5, batch size 1 (full resolution) or 2 (half resolution), up to 200 epochs, early
+stopping after 40 epochs without a validation prostate Dice improvement, mixed precision (float16
+autocast with gradient scaling, Dice computed in float32).
+
+**Reproducibility.** The patient split is deterministic (seeded `torch.randperm` over sorted patient IDs),
+and `torch.manual_seed(42)` is set before training. cuDNN convolution algorithms and data-loader worker
+timing are not fully deterministic, so retraining gives close but not bit-identical results. Evaluation is
+deterministic: `predict.py` reproduced `train.py`'s test scores exactly from the saved checkpoint.
 
 ## 7. Results
 
